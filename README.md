@@ -2,122 +2,189 @@
 
 **Work is a scavenger hunt. Hunt what matters.**
 
-A real-life RPG for ambitious people -- inspired by Pokemon GO but built for career and startup discovery. Opportunities hidden in the real world become collectible encounters on a fantasy map. The world reveals itself as you level up.
-
-**Live:** https://scavenger.work
-**Hackathon:** DeveloperWeek New York 2026
+A real-life RPG for ambitious people. Opportunities hidden in the real world become collectible encounters on a map. The world reveals itself as you level up.
 
 ---
 
 ## The Problem
 
-Most career and startup platforms tell you *what to learn*. They give you courses, checklists, and dashboards.
+Most career and startup platforms tell you *what to learn*. They serve you courses, checklists, and dashboards.
 
 None of them say: "There is a founder meetup 700 meters away from you right now."
 
-The real world is packed with high-value opportunities -- events, investors, hackathons, founder communities, accelerators -- but they are invisible to most people. Discovery is fragmented, passive, and luck-based.
+The real world is packed with high-value opportunities -- events, investors, hackathons, founder communities, accelerators. But discovery is fragmented, passive, and luck-based. People in Dhaka, Lagos, or Hanoi have no idea what is happening around them that could change their trajectory. Even people in New York miss encounters that are happening blocks away.
 
-**The result:** ambitious people miss the encounters that would actually change their trajectory.
+The problem is not effort. The problem is visibility.
 
 ---
 
 ## The Solution
 
-Scavenger.Work turns career opportunity discovery into a game.
+Scavenger.Work turns opportunity discovery into a game mechanic borrowed directly from Pokemon GO.
 
-Every real-world opportunity becomes a collectible encounter with a rarity tier:
+Every real-world opportunity becomes a collectible encounter on a map, assigned a rarity tier based on how rare and valuable that type of opportunity is:
 
-| Rarity | Example | XP |
+| Rarity | Example | XP Reward |
 |---|---|---|
-| Common | Read a founder interview | +10 |
-| Rare | Attend a startup meetup | +100 |
-| Epic | Interview a founder | +300 |
-| Legendary | Get your first customer | +1000 |
+| Common | Read a founder essay, online webinar | +10 XP |
+| Rare | Attend a startup meetup, networking event | +100 XP |
+| Epic | Interview a founder, pitch competition | +300 XP |
+| Legendary | Get your first customer, accelerator demo day | +1000 XP |
 
-The map starts hidden -- fog of war. As you level up, rarer encounters unlock. An AI radar scans the live web to surface real opportunities near you and generates a personalised quest line.
+The map starts hidden with fog of war. As players level up by collecting encounters, rarer opportunities unlock. An AI radar scans the live web in real time, finds actual events and opportunities near the player, and generates a personalised quest line.
 
-Instead of telling people what to learn, we tell them what adventure to go on.
-
----
-
-## How It Works
-
-1. Choose your class (Founder, Engineer, Designer, Creator, Researcher, Investor)
-2. State your goal
-3. The AI Opportunity Radar scans the live web with Nimble and generates a quest line
-4. Encounters appear on the map -- tap to get an AI approach script
-5. Complete encounters to earn XP and level up
-6. Higher levels reveal rarer, more powerful opportunities
+Instead of telling people what to learn, the system tells them what adventure to go on.
 
 ---
 
-## Tech Stack
+## How the Nimble Integration Works
 
-### Frontend
-- Next.js 14 (App Router)
-- Leaflet.js with CartoDB Voyager tiles
-- Framer Motion for animations
-- Tailwind CSS
-- Custom SVG encounter markers with animated pulse rings
+Nimble is the live intelligence layer of the entire product. Without Nimble, the map shows static mock data. With Nimble, every encounter on the map is a real opportunity pulled from the web in real time.
 
-### Backend
-- FastAPI (Python)
-- In-process caching for demo performance
-- Full mock fallback -- works without API keys
+### The Encounter Feed
 
-### Nimble (Agentic App Track)
-- `nimble.search()` -- scans live web for real events, meetups, hackathons by user goal and city
-- `nimble.extract()` -- pulls structured data from event pages
-- Powers both the map encounters and the AI Radar
+When a player opens the map, the backend calls `nimble.search()` with a query constructed from the player's class, goal, and city:
 
-### Tower (Data Pipeline Track)
-- `opportunity-scraper` -- scheduled Tower app, runs every 6 hours, queries Nimble and writes to Iceberg lakehouse
-- `quest-generator` -- Tower[ai] app, reads from Iceberg, calls GPT-4o, outputs personalised quest lines
-- Demonstrates: orchestration, Iceberg lakehouse storage, Python-native serverless compute
+```python
+queries = [
+    f"startup events founders {city} 2026",
+    f"{goal} meetup community {city}",
+    f"hackathon investor networking {city} June 2026",
+]
 
-### name.com (Domain Roulette Track)
-- Domain: **scavenger.work** -- selected from the name.com Domain Roulette list
-- The domain is the product philosophy: "Work IS a scavenger hunt"
-- Not bolted on -- it is the entire brand concept
+for query in queries:
+    result = nimble.search(
+        query=query,
+        max_results=6,
+        search_depth="lite"
+    )
+```
+
+Each result is parsed for rarity based on keywords in the title and description. A result containing "accelerator" or "YC" becomes Legendary. "Hackathon" becomes Epic. "Meetup" or "workshop" becomes Rare. Everything else is Common. This rarity inference is the core game mechanic -- the classification makes Nimble results feel like Pokemon spawns rather than a search results list.
+
+The classified encounters are then scattered across the map with realistic geographic coordinates around the player's city center, placed using a polar scatter algorithm so they appear naturally distributed rather than stacked.
+
+### The AI Radar
+
+The AI Radar page is the centrepiece demo feature. When a player types their goal and hits Scan:
+
+1. The backend calls `nimble.search()` with 3 targeted queries built from the goal
+2. The top 6 results are passed to GPT-4o with the player's class and goal
+3. GPT-4o generates a quest line of exactly 4 encounters progressing from Common to Legendary
+4. Each quest includes a concrete one-sentence approach script
+
+The scan animation on the frontend shows each step -- "Scanning live web with Nimble... Finding opportunities nearby... AI building your quest line..." -- which makes the live data pipeline visible and memorable during a demo.
+
+### Approach Scripts
+
+When a player taps an encounter and requests an approach script, the encounter's title and snippet are sent to the backend:
+
+```python
+result = nimble.extract(url=encounter_url, formats=["markdown"])
+```
+
+The extracted content is fed into GPT-4o to generate a personalised, class-aware approach script. A Founder gets different advice than an Engineer for the same investor event.
 
 ---
 
-## Project Structure
+## How the Tower Integration Works
+
+Tower is the data infrastructure layer. The Tower pipeline runs independently of the web app, feeding the backend's encounter store with fresh data on a schedule.
+
+### The Opportunity Scraper
+
+The first Tower app (`opportunity-scraper`) is a Python script deployed with a Towerfile that defines it as a schedulable app with parameters:
+
+```toml
+[app]
+name = "opportunity-scraper"
+script = "./scraper.py"
+source = ["./scraper.py"]
+
+[[parameters]]
+name = "city"
+default = "New York"
+
+[[parameters]]
+name = "goal_keywords"
+default = "startup founder AI hackathon"
+```
+
+When run, it executes 5 Nimble search queries across different opportunity categories, deduplicates results by URL, infers rarity for each, and writes the structured data to a Tower Iceberg lakehouse table called `scavenger.opportunities`.
+
+```python
+table = catalog.load_table("scavenger.opportunities")
+table.append(pa.Table.from_batches([batch]))
+```
+
+The app is scheduled to run every 6 hours:
+
+```bash
+tower orchestrate --app opportunity-scraper --cron "0 */6 * * *"
+```
+
+This means the lakehouse always contains fresh, pre-classified opportunities that the backend can serve without calling Nimble on every request -- reducing latency and API usage.
+
+### The Quest Generator
+
+The second Tower app (`quest-generator`) uses the `tower[ai]` extra. It reads from the Iceberg table, takes a player's class and goal as parameters, and calls GPT-4o to produce a personalised quest line:
+
+```python
+df = table.scan(limit=20).to_pandas()
+opportunities = df.to_dict(orient="records")
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": prompt}],
+    response_format={"type": "json_object"},
+)
+```
+
+The quest generator can be triggered on-demand via Tower webhooks -- for example, whenever a player opens the radar -- or run in batch to pre-generate quest lines for common class/goal combinations.
+
+### Why Tower Fits This Use Case
+
+The opportunity data has a natural staleness curve. Events that happened last week are worthless. Events happening in the next 30 days are valuable. Running a scheduled scrape pipeline that continuously refreshes the lakehouse means the product always has current data without hammering the Nimble API on every user request.
+
+The separation between the scraper (writes to Iceberg) and the quest generator (reads from Iceberg) is also architecturally clean -- the web app's `/encounters` and `/quest-radar` endpoints can read from the same lakehouse without duplicating scraping logic.
+
+---
+
+## How the name.com Domain Works
+
+The domain `scavenger.work` was selected from the name.com Domain Roulette list provided for the hackathon.
+
+The creative interpretation is not superficial. The domain does not describe the product -- it encapsulates the entire philosophy:
+
+> Work is a scavenger hunt.
+
+This reframes how people think about career development. Instead of a linear path of credentials and applications, work becomes a world of hidden encounters waiting to be discovered. Every networking event is a rare spawn. Every investor is a legendary encounter. Every mentor is an epic find.
+
+The domain appears in the navbar, the page title, the landing page hero, and is woven into the product's language throughout -- "Hunt It", "Encounter", "Quest", "Level Up". The entire brand vocabulary flows from the domain.
+
+---
+
+## Architecture
 
 ```
-scavenger-work/
-  frontend/                   Next.js app
-    app/
-      landing/page.tsx        Full scroll landing page with SVG animations
-      page.tsx                Class selection onboarding
-      map/page.tsx            Fantasy map game screen
-      radar/page.tsx          AI Opportunity Radar
-    components/
-      FantasyMap.tsx          Leaflet map with animated encounter markers
-      EncounterCard.tsx       Bottom sheet encounter modal
-      XPBar.tsx               Animated XP progress bar
-  backend/                    FastAPI
-    main.py                   App with logging, CORS, error handling
-    routers/
-      encounters.py           GET /encounters/ with level gating
-      quest_radar.py          GET /quest-radar/ with Nimble + GPT-4o
-      profile.py              POST /profile/level-up
-    services/
-      nimble_service.py       All Nimble API calls with mock fallback
-      openai_service.py       Quest generation and approach scripts
-  tower/
-    opportunity-scraper/      Towerfile + scraper.py (Nimble to Iceberg)
-    quest-generator/          Towerfile + generator.py (Iceberg to GPT-4o)
-  docker-compose.yml          Postgres + Redis for local dev
+User opens app
+  -> Next.js frontend (Vercel)
+  -> FastAPI backend (Railway)
+      -> nimble.search() for live encounters
+      -> GPT-4o for quest lines and approach scripts
+      -> In-process cache (5min TTL) to avoid repeat API calls
+  -> Tower pipeline (background, every 6h)
+      -> opportunity-scraper: Nimble -> Iceberg lakehouse
+      -> quest-generator: Iceberg -> GPT-4o -> quest_lines table
 ```
 
 ---
 
 ## Running Locally
 
-### Without API keys (demo mode)
+### No API keys needed (demo mode)
 
-The app uses built-in mock data with 8 NYC encounters and pre-written quest lines. No keys needed to see the full UI and game flow.
+The backend has full mock fallback. 8 pre-defined NYC encounters and pre-written quest lines load automatically when no API keys are present.
 
 **Terminal 1 -- Backend:**
 ```bash
@@ -139,13 +206,13 @@ Open http://localhost:3000
 
 ### With API keys (live mode)
 
-```bash
-# backend/.env
+Create `backend/.env`:
+```
 NIMBLE_API_KEY=your_nimble_key
 OPENAI_API_KEY=your_openai_key
 ```
 
-Get Nimble key: hackathon2026@nimbleway.com (free hackathon credits)
+Get Nimble key: hackathon2026@nimbleway.com (free hackathon credits available)
 
 ### Tower Pipeline
 
@@ -169,62 +236,34 @@ tower orchestrate --app opportunity-scraper --cron "0 */6 * * *"
 
 ---
 
-## Deployment
+## Project Structure
 
-**Frontend to Vercel:**
-```bash
-cd frontend && npx vercel
-# Set NEXT_PUBLIC_API_URL to your Railway backend URL
 ```
-
-**Backend to Railway:**
-Push repo to GitHub, connect to Railway, add env vars.
-
----
-
-## Prize Track Strategy
-
-### Overall Winner
-- Most memorable demo in the room
-- Solves a real, universal problem (career opportunity discovery)
-- Clear path to a business: $9/mo SaaS, B2B with accelerators and bootcamps
-- "Pokemon GO made the world magical by hiding monsters. We hide opportunities."
-
-### name.com Domain Roulette -- $2,500
-- Domain: scavenger.work (in their official list)
-- The domain does not describe the product -- it IS the product philosophy
-- Creative interpretation: Work is a scavenger hunt
-
-### Nimble -- $750
-- Agentic app using search + extract + crawl
-- Every map encounter is a live Nimble web search result
-- Radar feature demos real-time agentic web intelligence
-
-### Tower -- 6 months free
-- Two deployed Tower apps with Towerfiles
-- opportunity-scraper runs on schedule, writes to Iceberg lakehouse
-- quest-generator uses tower[ai] to call GPT-4o from stored data
-- Shows: orchestration, scheduling, lakehouse storage, MCP integration
-
----
-
-## The Demo (3 minutes)
-
-1. Open scavenger.work -- animated tagline intro plays
-2. Select Founder class -- gradient class card, floating emoji
-3. Map loads -- CartoDB Voyager tiles, colorful encounter bubbles with pulse rings
-4. Click Legendary marker -- "Angel Investor Open Hours" -- bottom sheet slides up
-5. Hit "How to Approach" -- GPT-4o generates personalised script
-6. Navigate to Radar -- type goal -- watch scan animation (Nimble scanning + AI steps)
-7. Quest line reveals with spring animation, rarity colors, XP values
-8. "This data is live. Nimble pulled it from the web. Tower stored it. AI shaped it."
-9. "The domain is scavenger.work. Work IS a scavenger hunt."
-
----
-
-## Team
-
-Built at DeveloperWeek New York Hackathon 2026.
+scavenger-work/
+  frontend/
+    app/
+      landing/page.tsx     Full scroll landing page with SVG animations
+      page.tsx             Class selection onboarding (Founder, Engineer, etc)
+      map/page.tsx         Fantasy map game screen with encounter markers
+      radar/page.tsx       AI Opportunity Radar with scan animation
+    components/
+      FantasyMap.tsx       Leaflet + CartoDB tiles + animated SVG markers
+      EncounterCard.tsx    Bottom sheet modal with approach script
+      XPBar.tsx            Animated XP progress bar
+  backend/
+    main.py                FastAPI app with logging, CORS, error handling
+    routers/
+      encounters.py        Level gating, Nimble search, mock fallback
+      quest_radar.py       Nimble + GPT-4o quest line generation
+      profile.py           XP to level calculation
+    services/
+      nimble_service.py    All Nimble API calls + mock data fallback
+      openai_service.py    Quest generation + approach scripts + fallbacks
+  tower/
+    opportunity-scraper/   Scheduled Tower app: Nimble to Iceberg
+    quest-generator/       On-demand Tower app: Iceberg to GPT-4o
+  docker-compose.yml       Postgres + Redis for local dev
+```
 
 ---
 
