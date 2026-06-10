@@ -1,0 +1,14 @@
+[app]
+name = "opportunity-scraper"
+script = "./scraper.py"
+source = ["./scraper.py"]
+
+[[parameters]]
+name = "city"
+description = "City to scrape opportunities from"
+default = "New York"
+
+[[parameters]]
+name = "goal_keywords"
+description = "Keywords for opportunity search"
+default = "startup founder AI hackathon"

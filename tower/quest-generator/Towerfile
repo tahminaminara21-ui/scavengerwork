@@ -1,0 +1,22 @@
+[app]
+name = "quest-generator"
+script = "./generator.py"
+source = ["./generator.py"]
+
+[app.extras]
+ai = true
+
+[[parameters]]
+name = "player_class"
+description = "Player's chosen class (Founder, Engineer, Designer...)"
+default = "Founder"
+
+[[parameters]]
+name = "goal"
+description = "Player's stated ambition"
+default = "become an AI founder"
+
+[[parameters]]
+name = "city"
+description = "Player's city"
+default = "New York"
